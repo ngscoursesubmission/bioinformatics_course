@@ -1,0 +1,244 @@
+---
+title: "Advanced Bioinformatics 2026 Assessment"
+author: "2507525"
+date: "2026-03-23"
+output:
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+# loading in necessary packages for all chunks
+library(ggplot2)
+library(DESeq2)
+library(pheatmap)
+```
+
+## Task 3.1
+
+Using the sum() function and : operator, write an expression  to evaluate the sum of all integers between 5 and 55
+
+```{r}
+# use the : operator to create a sequence of integers between 5 and 55
+# use sum() function to sum these inegers
+sum(5:55)
+```
+
+## Task 3.2
+
+Write a function called sumfun with one input parameter, called n, that calculates the sum of all integers between 5 and n. Use the function to do the calculation for n = 10, n = 20, and n = 100
+
+```{r}
+# defining a function called sumfun with one input n
+# the function uses the : operator to generate a sequence of integers from 5 to n and sum them with sum()
+sumfun <- function(n) {sum(5:n)}
+# when n = 10 the function will sum all integers from 5 to 10
+sumfun (10)
+# the function can be used with any value of n to sum all integers between from 5 to n 
+sumfun(20)
+sumfun(100)
+```
+## Task 3.3
+
+Write an R script using a for loop to calculate and print out the first 12 entries of the Fibonacci series
+
+```{r}
+# creating empty vector with a length of 12 with numeric(12)
+fibonacci <- numeric(12)
+# define the first two numbers in the sequence as the first two numbers in the fibonacci sequence
+fibonacci[1] <- 1 
+fibonacci[2] <- 1 
+# creating a for loop to print the next 10 numbers in the sequence
+# as the first 2 numbers have already been defined the loop starts at the 3rd value 
+for (i in 3:12) {
+# in the fibonacci sequence, each number is the sum of the two preceeding numbers in the sequence
+  fibonacci[i] <- fibonacci[i-1] + fibonacci[i-2]}
+# print the sequence
+fibonacci
+
+```
+## Task 3.4 
+
+With the mtcars dataset bundled with R, use ggplot to generate a boxplot of miles per gallon (in the variable mpg) as a function of the number of gears (in the variable gear). Use the fill aesthetic to colour bars by number of gears. 
+
+```{r}
+# create a boxplot of mpg grouped by number of gears
+ggplot(mtcars, aes(x=factor(gear), y=mpg, fill=factor(gear))) + geom_boxplot() # use mtcars dataset and map number of gears to the x-axis, miles per gallon (mpg) to the y-axis, and colour (fill) by gear group
+```
+
+## Task 3.5 
+
+Using the cars dataset and the function lm, fit a linear relationship between speed and breaking distance in the variable distance. What are the fitted slope and intercept of the line, and their standard errors? 
+
+```{r}
+# check the names in the dataset 
+names(cars)
+# fit linear model
+fit <- lm(dist ~ speed, data = cars)
+# view summary
+summary(fit)
+# from summary intercept = -17.5791 with Std error 6.7584
+# fitted slope = 3.9324 with Std error 0.4155
+```
+What are the units used for the variables in the dataset? 
+```{r}
+# view dataset information to see what units are used 
+?cars
+# the units used for speed is (mph) and the unit used for stopping distance is (ft)
+```
+
+## Task 3.6 
+Use ggplot to plot the data points from Task 3.5 and the linear fit.
+
+```{r}
+# plot stopping distance against speed and add the fitted linear regression line
+ggplot(cars, aes(x = speed, y = dist)) + # use the cars dataset and map speed to the x-axis and distance to the y-axis
+  geom_point() + # plot raw data points 
+  geom_smooth(method = "lm") + # add fitted lin regression line
+  labs(x = "Speed (mph)", y = "Stopping Distance (ft)")
+
+```
+
+## Task 3.7
+Using the cars dataset, now use linear regression (lm) to estimate the average reaction time for the driver to start braking (in seconds). To simplify matters you may assume that once braking commences, braking distance is proportional to the square of the speed. Explain the steps in your analysis. Do you get reasonable results? Finally, use ggplot to plot the data points and the fitted relationship
+
+```{r}
+# we now need a quadratic model 
+# reaction distance is proportional to speed and braking distance is proportional to speed squared
+newfit <- lm(dist ~ speed + I(speed^2), data = cars)
+# view summary
+summary (newfit)
+```
+
+The given reaction time is 0.91329 in ft/mph. To convert this into seconds for 'reaction time in seconds' we must convert from mph to ft/s. To do this divide by 1.467 as 1 mph = 1.467 ft/s.
+
+0.91329 / 1.467 = an average reaction time of 0.62 seconds
+
+This seems to be a reasonable average reaction time for braking. Average reaction time for braking is usually estimated between 0.5-1.5 seconds. However, the standard error is large, indicating that the result is not reliable, and neither (speed) or (speed)^2 coefficients are significant using a standard p value of 0.05. 
+
+
+```{r}
+# to create the graph use the same code as before, but specify that it is a quadratic model
+ggplot (cars, aes(x = speed, y = dist)) + geom_point() + geom_smooth(method = "lm", formula = y ~ x + I(x^2))
+```
+## PART 2: RNASEQ
+## Task 3.8
+Read in count data and sample description. 
+```{r}
+# read in the count matrix and sample metadata
+# header = TRUE uses the first row as column names and row.names = 1 sets the first column as row names
+counts <- read.csv("exercise1_counts.csv", row.names = 1)
+sample_info <- read.delim("exercise1_sample_description.info", header = TRUE, row.names = 1)
+
+# exploring data
+
+# display the column names of the count matrix
+colnames(counts)
+# display the row names of the metadata
+rownames(sample_info)
+# examine the full metadata table
+sample_info
+# examine the first few rows of the count matrix
+head(counts)
+
+```
+
+## Task 3.9 
+Create col_data and check dimensions
+```{r}
+## create col_data from sample metadata
+col_data <- sample_info
+
+## check dimensions of metadata and count matrix
+dim(col_data)
+dim(counts)
+
+```
+
+## Task 3.10 
+Construct DESeqDataSet object using count data and sample description
+
+```{r}
+# aligning the row names of col_data with the column names of the count matrix 
+# this assumes all samples are in the same order (the metadata and count data must already be aligned or they will become mislabelled)
+rownames(col_data) <- colnames(counts)
+# constructing DESeq from count matrix and sample desc 
+# design = ~ condition specifies that condition is the variable of interest
+dds <- DESeqDataSetFromMatrix(countData = counts, colData = col_data, design = ~ condition)
+```
+## Task 3.11 
+
+Perform rlog and VST transformation on the data. 
+
+```{r}
+# rlog transformation to stabilise variance across genes
+rld <- rlog(dds, blind = TRUE)
+rld_counts <- assay(rld)
+class(rld_counts)
+
+# vst transformation for similar variance normalisation
+vsd <- vst(dds, blind = TRUE)
+vsd_counts <- assay(vsd)
+class(vsd_counts)
+
+# Transforming the data reduces noise and improves visualisation/interpretation
+```
+
+## Task 3.12 
+
+Draw a heatmap of count matrix based on the top 40 highly expressed genes using rlog and VST data. 
+```{r}
+
+# finding the top 40 highly expressed genes from rlog
+top40_rlog <- order(rowMeans(rld_counts), decreasing = TRUE)[1:40]
+# visualise with pheatmap
+pheatmap(rld_counts[top40_rlog, ], scale = "row", main = "Top 40 highly expressed genes (rlog)")
+```
+
+```{r}
+
+# top 40 highly expressed genes from vst
+top40_vst <- order(rowMeans(vsd_counts), decreasing = TRUE)[1:40]
+# visualise with pheastmap
+pheatmap(vsd_counts[top40_vst, ], scale = "row", fontsize_row = 6, main = "Top 40 highly expressed genes (vst)")
+# the vst and rlog heat maps shows how expression of the top 40 genes varies across samples
+# relative to its own average expression
+```
+## Task 3.13
+Generate a SDM to see the clustering of count data. 
+
+```{r}
+# calculate distances between samples (sdm) using the rlog-transformed data 
+sample_dist <- dist(t(assay(rld)))
+class(sample_dist)
+# convert into matrix for heatmap visualization
+sdm <- as.matrix(sample_dist)
+class(sdm)
+# visualize
+pheatmap(sdm)
+
+```
+## Task 3.14
+Perform PCA analysis using the rlog method and find out the % significance values of first two principal components. 
+
+```{r}
+# check what column name is 
+colnames(colData(rld))
+# plot the PCA with rlog data
+plotPCA(rld, intgroup = "condition")
+```
+PCA was performed on the rlog-transformed data using plotPCA(). From the PCA plot, he first principal component explained 70% of the variance and the second principal component explained 13%. Most of the variation in the dataset is captured by PC1.
+
+
+## Task 3.15
+Repeat the PCA, this time using VST method and compare the plots with the ones obtained using rlog method
+```{r}
+# plot the PCA with vst data 
+plotPCA(vsd, intgroup = "condition")
+```
+Comparing the two plots, they are visually similar. Both show the same clustering of samples. However, the vst plot did show a 1% decrease in variance explained by PC1 and a 1% increase in variance explained by PC2.
+
+
+
+
+
