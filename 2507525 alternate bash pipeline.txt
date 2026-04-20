@@ -1,0 +1,153 @@
+#!/bin/bash
+
+## creating output directories
+## have already created data, scripts, results directories
+mkdir -p ~/ngs_assignment/dnaseq_pipeline/results/fastqc_untrimmed_reads/
+mkdir -p ~/ngs_assignment/dnaseq_pipeline/data/trimmed_fastq/
+mkdir -p ~/ngs_assignment/dnaseq_pipeline/results/fastqc_trimmed_reads/
+mkdir -p ~/ngs_assignment/dnaseq_pipeline/data/aligned_data/
+mkdir -p ~/ngs_assignment/dnaseq_pipeline/logs/
+
+## quality assessment on raw fastq files using Fastqc  
+
+fastqc -t 4 -o ~/ngs_assignment/dnaseq_pipeline/results/fastqc_untrimmed_reads/ "$1" "$2" 
+# run Trimmomatic on paired-end reads
+trimmomatic PE \
+  -threads 4 \
+  -phred33 \
+  $1 $2 \
+  -baseout ~/ngs_assignment/dnaseq_pipeline/data/trimmed_fastq/trimmed_data \
+  ILLUMINACLIP:/home/ubuntu/anaconda3/share/trimmomatic-0.40-0/adapters/NexteraPE-PE.fa:2:30:10 \
+  TRAILING:25 \
+  MINLEN:5
+
+## run FastQC on paired end reads for quality assessment
+
+fastqc -t 4 -o ~/ngs_assignment/dnaseq_pipeline/results/fastqc_trimmed_reads/ \
+  ~/ngs_assignment/dnaseq_pipeline/data/trimmed_fastq/trimmed_data_1P \
+  ~/ngs_assignment/dnaseq_pipeline/data/trimmed_fastq/trimmed_data_2P
+
+## using bwa mem for alignming trimmed paired ends read to the reference genome
+## read group info has been added 
+ 
+bwa mem -t 4 -v 1 -R '@RG\tID:HWI-D0011.50.H7AP8ADXX.1.WES01\tSM:WES01\tPL:ILLUMINA\tLB:nextera-wes01-blood\tDT:2017-02-23\tPU:HWI-D00119' -I 250,50 \
+~/ngs_assignment/dnaseq_pipeline/data/reference/hg19.fa.gz \
+~/ngs_assignment/dnaseq_pipeline/data/trimmed_fastq/trimmed_data_1P \
+~/ngs_assignment/dnaseq_pipeline/data/trimmed_fastq/trimmed_data_2P > \
+~/ngs_assignment/dnaseq_pipeline/data/aligned_data/NGS0001.sam
+
+## convert the output SAM file to BAM file
+
+samtools view -h -b \
+~/ngs_assignment/dnaseq_pipeline/data/aligned_data/NGS0001.sam > \
+~/ngs_assignment/dnaseq_pipeline/data/aligned_data/NGS0001.bam
+
+## sort the resulting BAM file
+
+samtools sort \
+~/ngs_assignment/dnaseq_pipeline/data/aligned_data/NGS0001.bam > \
+~/ngs_assignment/dnaseq_pipeline/data/aligned_data/NGS0001_sorted.bam
+# indexing the sorted bam file
+samtools index \
+~/ngs_assignment/dnaseq_pipeline/data/aligned_data/NGS0001_sorted.bam
+
+## using Picard to mark duplicate reads
+
+picard MarkDuplicates \
+I=~/ngs_assignment/dnaseq_pipeline/data/aligned_data/NGS0001_sorted.bam \
+O=~/ngs_assignment/dnaseq_pipeline/data/aligned_data/NGS0001_sorted_marked.bam \
+M=~/ngs_assignment/dnaseq_pipeline/data/aligned_data/marked_dup_metrics.txt
+
+## quality filter the duplicate marked file 
+
+samtools view -F 1796 -q 20 -o ~/ngs_assignment/dnaseq_pipeline/data/aligned_data/NGS0001_sorted_filtered.bam ~/ngs_assignment/dnaseq_pipeline/data/aligned_data/NGS0001_sorted_marked.bam
+
+## index quality filtered file and create .bai file
+
+cd ~/ngs_assignment/dnaseq_pipeline/data/aligned_data
+samtools index NGS0001_sorted_filtered.bam
+
+## performing basic alignment statistics
+
+## flagstats
+samtools flagstat NGS0001_sorted_filtered.bam > NGS0001_flagstat.txt
+
+## idxstats
+samtools idxstats NGS0001_sorted_filtered.bam > NGS0001_idxstats.txt
+
+## depth of coverage in our region of interest
+bedtools coverage -a ~/ngs_assignment/dnaseq_pipeline/data/annotation.bed \
+-b NGS0001_sorted_filtered.bam > NGS0001_coverage.txt
+
+## generate more stats including insert size metrics
+samtools stats NGS0001_sorted_filtered.bam > NGS0001_stats.txt
+
+## these output into current wd so moving them to desired directory
+mv NGS0001_*.txt ~/ngs_assignment/dnaseq_pipeline/logs/
+
+## unzip reference file for freebayes was done in project setup using zcat ~/ngs_assignment/dnaseq_pipeline/data/reference/hg19.fa.gz > ~/ngs_assignment/dnaseq_pipeline/data/reference/hg19.fa
+## indexing to create .fai file also done in project setup using samtools faidx ~/ngs_assignment/dnaseq_pipeline/data/reference/hg19.fa
+
+## Call variants with bcftools
+
+bcftools mpileup -f ~/ngs_assignment/dnaseq_pipeline/data/reference/hg19.fa \
+~/ngs_assignment/dnaseq_pipeline/data/aligned_data/NGS0001_sorted_filtered.bam | \
+bcftools call -mv -o ~/ngs_assignment/dnaseq_pipeline/results/NGS0001.vcf
+
+## compress VCF
+
+bgzip ~/ngs_assignment/dnaseq_pipeline/results/NGS0001.vcf
+
+## index VCF
+
+tabix -p vcf ~/ngs_assignment/dnaseq_pipeline/results/NGS0001.vcf.gz
+
+## quality filtering variants using vcfilter; following instructions to leave the rest of pipeline unchanged however this filters using freebayes formatted fields
+
+vcffilter -f "QUAL > 20 & DP > 10 & QUAL / AO > 10 & SAF > 0 & SAR > 0 & RPR > 1 & RPL > 1" \
+~/ngs_assignment/dnaseq_pipeline/results/NGS0001.vcf.gz > ~/ngs_assignment/dnaseq_pipeline/results/NGS0001_filtered.vcf
+
+## use bedtools to filter VCF file to restrict to variants in region specified in annotation.bed
+
+bedtools intersect -header -wa -a ~/ngs_assignment/dnaseq_pipeline/results/NGS0001_filtered.vcf -b ~/ngs_assignment/dnaseq_pipeline/data/annotation.bed \
+> ~/ngs_assignment/dnaseq_pipeline/results/NGS0001_filtered_chr22.vcf
+
+## compress the resulting VCF  
+
+bgzip ~/ngs_assignment/dnaseq_pipeline/results/NGS0001_filtered_chr22.vcf
+
+## index compressed vcf file
+
+tabix -p vcf ~/ngs_assignment/dnaseq_pipeline/results/NGS0001_filtered_chr22.vcf.gz
+
+## convert VCF to annovar input file format
+
+cd ~/annovar
+./convert2annovar.pl -format vcf4 \
+~/ngs_assignment/dnaseq_pipeline/results/NGS0001_filtered_chr22.vcf.gz > \
+~/ngs_assignment/dnaseq_pipeline/results/NGS0001_filtered_chr22.avinput
+
+## run annovar table function
+## databases for annovar annotation have been downloaded previously
+## have used refGene and dbSNP hg19 databases for annotation as a later question asks for filtering for exonic variants not present in dbSNP database 
+
+cd ~/annovar
+./table_annovar.pl ~/ngs_assignment/dnaseq_pipeline/results/NGS0001_filtered_chr22.avinput humandb/ -buildver hg19 \
+-out ~/ngs_assignment/dnaseq_pipeline/results/NGS0001_filtered_chr22 -remove   \
+-protocol refGene,avsnp147 -operation g,f -otherinfo -nastring . -csvout
+
+## output is a csv file that can be opened with filezilla 
+## annotating filtered vcf file with snpEff and moving output files to results directory
+
+cd ~/snpEff
+/usr/lib/jvm/java-21-openjdk-amd64/bin/java -Xmx8g -jar snpEff.jar hg19 ~/ngs_assignment/dnaseq_pipeline/results/NGS0001_filtered_chr22.vcf.gz  > snpeff.vcf
+mv snpeff.vcf snpEff_genes.txt snpEff_summary.html ~/ngs_assignment/dnaseq_pipeline/results/
+
+## filtering my annovar csv output for exonic genes not present in dbsnp
+## column 6 contains info on if genes are exonic/intronic and column 11 contains info on variant freq in dbSNP
+
+awk -F',' 'NR==1 || ($6=="exonic" && $11==".")' \
+~/ngs_assignment/dnaseq_pipeline/results/NGS0001_filtered_chr22.hg19_multianno.csv > \
+~/ngs_assignment/dnaseq_pipeline/results/NGS0001_exonic_novel.csv
+
+
