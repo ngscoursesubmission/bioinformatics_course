@@ -20,7 +20,7 @@ Using the sum() function and : operator, write an expression  to evaluate the su
 
 ```{r}
 # use the : operator to create a sequence of integers between 5 and 55
-# use sum() function to sum these inegers
+# use sum() function to sum these integers
 sum(5:55)
 ```
 
@@ -34,7 +34,7 @@ Write a function called sumfun with one input parameter, called n, that calculat
 sumfun <- function(n) {sum(5:n)}
 # when n = 10 the function will sum all integers from 5 to 10
 sumfun (10)
-# the function can be used with any value of n to sum all integers between from 5 to n 
+# the function can be used with any value of n 
 sumfun(20)
 sumfun(100)
 ```
@@ -59,7 +59,7 @@ fibonacci
 ```
 ## Task 3.4 
 
-With the mtcars dataset bundled with R, use ggplot to generate a boxplot of miles per gallon (in the variable mpg) as a function of the number of gears (in the variable gear). Use the fill aesthetic to colour bars by number of gears. 
+With the mtcars dataset bundled with R, use ggplot to generate a boxplot of miles per gallon (in the variable mpg) as a function of the number of gears (in the variable gear). Use the fill aesthetic to colour boxplots by number of gears. 
 
 ```{r}
 # create a boxplot of mpg grouped by number of gears
@@ -80,7 +80,9 @@ summary(fit)
 # from summary intercept = -17.5791 with Std error 6.7584
 # fitted slope = 3.9324 with Std error 0.4155
 ```
+
 What are the units used for the variables in the dataset? 
+
 ```{r}
 # view dataset information to see what units are used 
 ?cars
@@ -94,7 +96,7 @@ Use ggplot to plot the data points from Task 3.5 and the linear fit.
 # plot stopping distance against speed and add the fitted linear regression line
 ggplot(cars, aes(x = speed, y = dist)) + # use the cars dataset and map speed to the x-axis and distance to the y-axis
   geom_point() + # plot raw data points 
-  geom_smooth(method = "lm") + # add fitted lin regression line
+  geom_smooth(method = "lm") + # add fitted linear regression line
   labs(x = "Speed (mph)", y = "Stopping Distance (ft)")
 
 ```
@@ -105,6 +107,7 @@ Using the cars dataset, now use linear regression (lm) to estimate the average r
 ```{r}
 # we now need a quadratic model 
 # reaction distance is proportional to speed and braking distance is proportional to speed squared
+# and total stopping distance = reaction distance + braking distance
 newfit <- lm(dist ~ speed + I(speed^2), data = cars)
 # view summary
 summary (newfit)
@@ -114,16 +117,18 @@ The given reaction time is 0.91329 in ft/mph. To convert this into seconds for '
 
 0.91329 / 1.467 = an average reaction time of 0.62 seconds
 
-This seems to be a reasonable average reaction time for braking. Average reaction time for braking is usually estimated between 0.5-1.5 seconds. However, the standard error is large, indicating that the result is not reliable, and neither (speed) or (speed)^2 coefficients are significant using a standard p value of 0.05. 
+This seems to be a reasonable average reaction time for braking. Average reaction time for braking is usually estimated between 0.5-1.5 seconds. However, the standard error is large, indicating that the result is not reliable, and neither speed or speed^2 coefficients are statistically significant.
 
 
 ```{r}
 # to create the graph use the same code as before, but specify that it is a quadratic model
 ggplot (cars, aes(x = speed, y = dist)) + geom_point() + geom_smooth(method = "lm", formula = y ~ x + I(x^2))
 ```
+
 ## PART 2: RNASEQ
 ## Task 3.8
 Read in count data and sample description. 
+
 ```{r}
 # read in the count matrix and sample metadata
 # header = TRUE uses the first row as column names and row.names = 1 sets the first column as row names
@@ -145,6 +150,7 @@ head(counts)
 
 ## Task 3.9 
 Create col_data and check dimensions
+
 ```{r}
 ## create col_data from sample metadata
 col_data <- sample_info
@@ -166,12 +172,15 @@ rownames(col_data) <- colnames(counts)
 # design = ~ condition specifies that condition is the variable of interest
 dds <- DESeqDataSetFromMatrix(countData = counts, colData = col_data, design = ~ condition)
 ```
+
 ## Task 3.11 
 
 Perform rlog and VST transformation on the data. 
 
 ```{r}
 # rlog transformation to stabilise variance across genes
+# blind = TRUE means DESeq will ignore experimental conditions when transforming data 
+# assay extracts the transformed matrix (in this case from the rlog object)
 rld <- rlog(dds, blind = TRUE)
 rld_counts <- assay(rld)
 class(rld_counts)
@@ -187,6 +196,7 @@ class(vsd_counts)
 ## Task 3.12 
 
 Draw a heatmap of count matrix based on the top 40 highly expressed genes using rlog and VST data. 
+
 ```{r}
 
 # finding the top 40 highly expressed genes from rlog
@@ -199,11 +209,12 @@ pheatmap(rld_counts[top40_rlog, ], scale = "row", main = "Top 40 highly expresse
 
 # top 40 highly expressed genes from vst
 top40_vst <- order(rowMeans(vsd_counts), decreasing = TRUE)[1:40]
-# visualise with pheastmap
+# visualise with pheatmap
 pheatmap(vsd_counts[top40_vst, ], scale = "row", fontsize_row = 6, main = "Top 40 highly expressed genes (vst)")
 # the vst and rlog heat maps shows how expression of the top 40 genes varies across samples
 # relative to its own average expression
 ```
+
 ## Task 3.13
 Generate a SDM to see the clustering of count data. 
 
@@ -218,6 +229,7 @@ class(sdm)
 pheatmap(sdm)
 
 ```
+
 ## Task 3.14
 Perform PCA analysis using the rlog method and find out the % significance values of first two principal components. 
 
@@ -225,17 +237,22 @@ Perform PCA analysis using the rlog method and find out the % significance value
 # check what column name is 
 colnames(colData(rld))
 # plot the PCA with rlog data
+# PCA reduces dimensions/complexity in data by transforming it into principal components
+# PC1 will capture the most variation, then PC2, etc 
 plotPCA(rld, intgroup = "condition")
 ```
-PCA was performed on the rlog-transformed data using plotPCA(). From the PCA plot, he first principal component explained 70% of the variance and the second principal component explained 13%. Most of the variation in the dataset is captured by PC1.
+
+PCA was performed on the rlog-transformed data using plotPCA(). From the PCA plot, the first principal component explained 70% of the variance and the second principal component explained 13%. 
 
 
 ## Task 3.15
 Repeat the PCA, this time using VST method and compare the plots with the ones obtained using rlog method
+
 ```{r}
 # plot the PCA with vst data 
 plotPCA(vsd, intgroup = "condition")
 ```
+
 Comparing the two plots, they are visually similar. Both show the same clustering of samples. However, the vst plot did show a 1% decrease in variance explained by PC1 and a 1% increase in variance explained by PC2.
 
 
